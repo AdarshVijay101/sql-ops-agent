@@ -31,3 +31,10 @@ jobs:
 
       - name: Tests (pytest)
         run: pytest -q
+
+      - name: Run Eval Harness (Smoke)
+        # We assume dependencies are installed. The harness uses a MockLLM so it should pass.
+        run: python sql_ops_agent/eval/harness.py
+
+      - name: Build Docker Image
+        run: docker build -f infra/Dockerfile .

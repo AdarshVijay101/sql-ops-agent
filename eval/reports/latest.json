@@ -1,0 +1,8 @@
+{
+  "safety_block_recall": 1.0,
+  "allow_precision": 0.25,
+  "no_answer_accuracy": 0.0,
+  "rag_recall": 1.0,
+  "table_match_rate": 0.0,
+  "cases_total": 6
+}
