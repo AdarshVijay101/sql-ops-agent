@@ -1,0 +1,42 @@
+services:
+  api:
+    build:
+      context: ../
+      dockerfile: infra/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      # Point to the local LLM service defined below
+      LLM_BASE_URL: "http://llm:8000/v1"
+      LLM_API_KEY: "local-token"
+      # Default to in-memory/file DuckDB for zero-dependency run
+      DB_URL: "duckdb:///data/demo.duckdb"
+      LOG_LEVEL: "INFO"
+    volumes:
+      - ./data:/data
+    depends_on:
+      - llm
+
+  # CPU-friendly local LLM
+  llm:
+    image: ghcr.io/abetlen/llama-cpp-python:latest
+    ports:
+      - "8000:8000"
+    environment:
+      # simple default, user should mount their own model
+      MODEL: "/models/model.gguf"
+    volumes:
+      - ../models:/models
+    # Command to run the OpenAI compatible server
+    command: python -m llama_cpp.server --model /models/model.gguf --host 0.0.0.0 --port 8000
+
+  # Optional Postgres service for "production" profile
+  postgres:
+    profiles: [ "postgres" ]
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: sqlops
+    ports:
+      - "5432:5432"
