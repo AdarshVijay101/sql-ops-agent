@@ -1,3 +1,5 @@
+
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -15,29 +17,40 @@ parts/
 sdist/
 var/
 wheels/
-share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 MANIFEST
 
-# Virtual Environment
+# Virtual Env
 venv/
-.venv/
 env/
+ENV/
+.env
+.env.*
+.venv/
 
-# IDE
+# IDE / Editor
 .idea/
 .vscode/
+*.swp
+*.swo
 
 # Docker
 docker-compose.override.yml
 
-# DB
-*.duckdb
-*.db
-data/
+# Checkpoints / Models
+*.gguf
 models/
+*.pt
+*.safetensors
 
-# Logs
+# Logs & Reports
 *.log
+eval/reports/
+.eval_cache/
+
+# Data
+data/
+*.db
+*.duckdb

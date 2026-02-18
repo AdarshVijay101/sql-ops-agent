@@ -4,7 +4,7 @@ from typing import Any, List, Dict
 import asyncio
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import create_engine, text
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import NullPool, StaticPool
 from sql_ops_agent.observability.metrics import SQL_LATENCY_SECONDS, SQL_EXECUTED_TOTAL
 
 @dataclass(frozen=True)
@@ -25,7 +25,12 @@ class SQLExecutor:
             )
             self._sync_engine = None
         else:
-            self._sync_engine = create_engine(cfg.dsn, poolclass=NullPool)
+            # For in-memory databases (sqlite/duckdb), we must use StaticPool 
+            # to maintain the same connection/state across multiple execute calls.
+            if ":memory:" in cfg.dsn:
+                self._sync_engine = create_engine(cfg.dsn, poolclass=StaticPool, connect_args={'check_same_thread': False})
+            else:
+                self._sync_engine = create_engine(cfg.dsn)
             self._async_engine = None
 
     async def run(self, sql: str, params: dict[str, Any] | None = None) -> List[Dict[str, Any]]:
@@ -40,7 +45,7 @@ class SQLExecutor:
 
     async def _run_async(self, sql: str, params: dict[str, Any]) -> List[Dict[str, Any]]:
         try:
-            async with self._async_engine.connect() as conn:
+            async with self._async_engine.begin() as conn:
                 if "postgres" in self._cfg.dsn:
                      await conn.execute(text(f"SET statement_timeout = {self._cfg.statement_timeout_ms}"))
                      
@@ -59,7 +64,7 @@ class SQLExecutor:
         if not self._sync_engine:
              raise RuntimeError("No sync engine initialized")
         
-        with self._sync_engine.connect() as conn:
+        with self._sync_engine.begin() as conn:
              result = conn.execute(text(sql), params)
              rows = result.mappings().fetchmany(self._cfg.max_rows)
              SQL_EXECUTED_TOTAL.inc()

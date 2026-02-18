@@ -1,0 +1,546 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.13.5, pytest-9.0.2, pluggy-1.5.0 -- C:\Users\kadar\miniconda3\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\kadar\.gemini\antigravity\scratch\sql-ops-agent
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.11.0, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 13 items
+
+tests/test_executor.py::test_duckdb_execution FAILED                     [  7%]
+tests/test_guardrails.py::test_allow_simple_select FAILED                [ 15%]
+tests/test_guardrails.py::test_block_write PASSED                        [ 23%]
+tests/test_guardrails.py::test_block_multi_statement PASSED              [ 30%]
+tests/test_guardrails.py::test_enforce_limit_cap FAILED                  [ 38%]
+tests/test_guardrails.py::test_block_disallowed_table FAILED             [ 46%]
+tests/test_guardrails.py::test_block_disallowed_schema FAILED            [ 53%]
+tests/test_guardrails.py::test_allow_cte FAILED                          [ 61%]
+tests/test_integration.py::test_agent_run_basic FAILED                   [ 69%]
+tests/test_integration.py::test_agent_guardrail_block PASSED             [ 76%]
+tests/test_retrieval.py::test_retrieval_basic PASSED                     [ 84%]
+tests/test_retrieval.py::test_retrieval_no_match PASSED                  [ 92%]
+tests/test_retrieval.py::test_retrieval_threshold PASSED                 [100%]
+
+================================== FAILURES ===================================
+____________________________ test_duckdb_execution ____________________________
+
+self = <sqlalchemy.engine.base.Connection object at 0x000001BFBA7E8B90>
+dialect = <duckdb_engine.Dialect object at 0x000001BFBA799160>
+context = <sqlalchemy.dialects.postgresql.psycopg2.PGExecutionContext_psycopg2 object at 0x000001BFBA7E8F50>
+statement = <sqlalchemy.dialects.postgresql.base.PGCompiler object at 0x000001BFBA7E8E10>
+parameters = [()]
+
+    def _exec_single_context(
+        self,
+        dialect: Dialect,
+        context: ExecutionContext,
+        statement: Union[str, Compiled],
+        parameters: Optional[_AnyMultiExecuteParams],
+    ) -> CursorResult[Any]:
+        """continue the _execute_context() method for a single DBAPI
+        cursor.execute() or cursor.executemany() call.
+    
+        """
+        if dialect.bind_typing is BindTyping.SETINPUTSIZES:
+            generic_setinputsizes = context._prepare_set_input_sizes()
+    
+            if generic_setinputsizes:
+                try:
+                    dialect.do_set_input_sizes(
+                        context.cursor, generic_setinputsizes, context
+                    )
+                except BaseException as e:
+                    self._handle_dbapi_exception(
+                        e, str(statement), parameters, None, context
+                    )
+    
+        cursor, str_statement, parameters = (
+            context.cursor,
+            context.statement,
+            context.parameters,
+        )
+    
+        effective_parameters: Optional[_AnyExecuteParams]
+    
+        if not context.executemany:
+            effective_parameters = parameters[0]
+        else:
+            effective_parameters = parameters
+    
+        if self._has_events or self.engine._has_events:
+            for fn in self.dispatch.before_cursor_execute:
+                str_statement, effective_parameters = fn(
+                    self,
+                    cursor,
+                    str_statement,
+                    effective_parameters,
+                    context,
+                    context.executemany,
+                )
+    
+        if self._echo:
+            self._log_info(str_statement)
+    
+            stats = context._get_cache_stats()
+    
+            if not self.engine.hide_parameters:
+                self._log_info(
+                    "[%s] %r",
+                    stats,
+                    sql_util._repr_params(
+                        effective_parameters,
+                        batches=10,
+                        ismulti=context.executemany,
+                    ),
+                )
+            else:
+                self._log_info(
+                    "[%s] [SQL parameters hidden due to hide_parameters=True]",
+                    stats,
+                )
+    
+        evt_handled: bool = False
+        try:
+            if context.execute_style is ExecuteStyle.EXECUTEMANY:
+                effective_parameters = cast(
+                    "_CoreMultiExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_executemany:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_executemany(
+                        cursor,
+                        str_statement,
+                        effective_parameters,
+                        context,
+                    )
+            elif not effective_parameters and context.no_parameters:
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute_no_params:
+                        if fn(cursor, str_statement, context):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+                    self.dialect.do_execute_no_params(
+                        cursor, str_statement, context
+                    )
+            else:
+                effective_parameters = cast(
+                    "_CoreSingleExecuteParams", effective_parameters
+                )
+                if self.dialect._has_events:
+                    for fn in self.dialect.dispatch.do_execute:
+                        if fn(
+                            cursor,
+                            str_statement,
+                            effective_parameters,
+                            context,
+                        ):
+                            evt_handled = True
+                            break
+                if not evt_handled:
+>                   self.dialect.do_execute(
+                        cursor, str_statement, effective_parameters, context
+                    )
+
+..\..\..\..\miniconda3\Lib\site-packages\sqlalchemy\engine\base.py:1967: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+..\..\..\..\miniconda3\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <duckdb_engine.CursorWrapper object at 0x000001BFBA7E9090>
+statement = "INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')", parameters = ()
+context = None
+
+    def execute(
+        self,
+        statement: str,
+        parameters: Optional[Tuple] = None,
+        context: Optional[Any] = None,
+    ) -> None:
+        try:
+            if statement.lower() == "commit":  # this is largely for ipython-sql
+                self.__c.commit()
+            elif statement.lower() in (
+                "register",
+                "register(?, ?)",
+                "register($1, $2)",
+            ):
+                assert parameters and len(parameters) == 2, parameters
+                view_name, df = parameters
+                self.__c.register(view_name, df)
+            elif parameters is None:
+                self.__c.execute(statement)
+            else:
+>               self.__c.execute(statement, parameters)
+E               _duckdb.CatalogException: Catalog Error: Table with name users does not exist!
+E               Did you mean "sqlite_master"?
+
+..\..\..\..\miniconda3\Lib\site-packages\duckdb_engine\__init__.py:150: CatalogException
+
+The above exception was the direct cause of the following exception:
+
+    @pytest.mark.asyncio
+    async def test_duckdb_execution():
+        # Use in-memory duckdb
+        cfg = ExecConfig(dsn="duckdb:///:memory:")
+        executor = SQLExecutor(cfg)
+    
+        # Create a table
+        init_sql = "CREATE TABLE users (id INTEGER, name VARCHAR)"
+        # We cheat and use the internal sync engine to execute DDL for setup,
+        # since our run() method might be read-only if we enforced it,
+        # but the executor itself is just a runner. The guardrails enforce read-only.
+        # The executor's run() method IS generic.
+        await executor.run(init_sql)
+    
+>       await executor.run("INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')")
+
+tests\test_executor.py:18: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+sql_ops_agent\sql\executor.py:41: in run
+    return await self._run_sync_in_thread(sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+sql_ops_agent\sql\executor.py:58: in _run_sync_in_thread
+    return await asyncio.to_thread(self._run_sync_internal, sql, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\miniconda3\Lib\asyncio\threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\miniconda3\Lib\concurrent\futures\thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+sql_ops_agent\sql\executor.py:65: in _run_sync_internal
+    result = conn.execute(text(sql), params)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\miniconda3\Lib\site-packages\sqlalchemy\engine\base.py:1419: in execute
+    return meth(
+..\..\..\..\miniconda3\Lib\site-packages\sqlalchemy\sql\elements.py:527: in _execute_on_connection
+    return connection._execute_clauseelement(
+..\..\..\..\miniconda3\Lib\site-packages\sqlalchemy\engine\base.py:1641: in _execute_clauseelement
+    ret = self._execute_context(
+..\..\..\..\miniconda3\Lib\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+..\..\..\..\miniconda3\Lib\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+..\..\..\..\miniconda3\Lib\site-packages\sqlalchemy\engine\base.py:2363: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+..\..\..\..\miniconda3\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+..\..\..\..\miniconda3\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <duckdb_engine.CursorWrapper object at 0x000001BFBA7E9090>
+statement = "INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')", parameters = ()
+context = None
+
+    def execute(
+        self,
+        statement: str,
+        parameters: Optional[Tuple] = None,
+        context: Optional[Any] = None,
+    ) -> None:
+        try:
+            if statement.lower() == "commit":  # this is largely for ipython-sql
+                self.__c.commit()
+            elif statement.lower() in (
+                "register",
+                "register(?, ?)",
+                "register($1, $2)",
+            ):
+                assert parameters and len(parameters) == 2, parameters
+                view_name, df = parameters
+                self.__c.register(view_name, df)
+            elif parameters is None:
+                self.__c.execute(statement)
+            else:
+>               self.__c.execute(statement, parameters)
+E               sqlalchemy.exc.ProgrammingError: (_duckdb.CatalogException) Catalog Error: Table with name users does not exist!
+E               Did you mean "sqlite_master"?
+E               [SQL: INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')]
+E               (Background on this error at: https://sqlalche.me/e/20/f405)
+
+..\..\..\..\miniconda3\Lib\site-packages\duckdb_engine\__init__.py:150: ProgrammingError
+__________________________ test_allow_simple_select ___________________________
+
+strict_policy = SQLPolicy(allowed_schemas={'main', 'public'}, allowed_tables={'users', 'orders'}, max_limit=10, allow_explain=False)
+
+    def test_allow_simple_select(strict_policy):
+        sql = "SELECT * FROM users"
+>       rewritten = validate_and_rewrite(sql, strict_policy)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_guardrails.py:15: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+sql = 'SELECT * FROM users'
+policy = SQLPolicy(allowed_schemas={'main', 'public'}, allowed_tables={'users', 'orders'}, max_limit=10, allow_explain=False)
+
+    def validate_and_rewrite(sql: str, policy: SQLPolicy) -> str:
+        """
+        Parses SQL, validates against policy, and rewrites (e.g. enforcing LIMIT).
+        Raises SQLBlocked if policy is violated.
+        """
+        # 1) block multi-statement and obvious dangers early
+        # Semi-colon check: robustly check if there are multiple statements
+        if len(sqlglot.parse(sql)) > 1:
+             raise SQLBlocked("multiple_statements_not_allowed")
+    
+        # Regex fallback for obvious DDL/DML keywords as a first line of defense
+        if re.search(r"\b(insert|update|delete|drop|alter|truncate|create|copy|grant|revoke)\b", sql, re.I):
+            raise SQLBlocked("write_or_ddl_not_allowed")
+    
+        # 2) parse
+        try:
+            # standard dialect, or we could make this configurable
+            tree = sqlglot.parse_one(sql)
+        except Exception as e:
+            raise SQLBlocked(f"parse_error:{e.__class__.__name__}")
+    
+        # 3) allow only SELECT / WITH SELECT (and optionally EXPLAIN)
+>       if isinstance(tree, exp.Explain):
+                            ^^^^^^^^^^^
+E       AttributeError: module 'sqlglot.expressions' has no attribute 'Explain'
+
+sql_ops_agent\sql\guardrails.py:42: AttributeError
+___________________________ test_enforce_limit_cap ____________________________
+
+strict_policy = SQLPolicy(allowed_schemas={'main', 'public'}, allowed_tables={'users', 'orders'}, max_limit=10, allow_explain=False)
+
+    def test_enforce_limit_cap(strict_policy):
+        sql = "SELECT * FROM users LIMIT 1000"
+>       rewritten = validate_and_rewrite(sql, strict_policy)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_guardrails.py:32: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+sql = 'SELECT * FROM users LIMIT 1000'
+policy = SQLPolicy(allowed_schemas={'main', 'public'}, allowed_tables={'users', 'orders'}, max_limit=10, allow_explain=False)
+
+    def validate_and_rewrite(sql: str, policy: SQLPolicy) -> str:
+        """
+        Parses SQL, validates against policy, and rewrites (e.g. enforcing LIMIT).
+        Raises SQLBlocked if policy is violated.
+        """
+        # 1) block multi-statement and obvious dangers early
+        # Semi-colon check: robustly check if there are multiple statements
+        if len(sqlglot.parse(sql)) > 1:
+             raise SQLBlocked("multiple_statements_not_allowed")
+    
+        # Regex fallback for obvious DDL/DML keywords as a first line of defense
+        if re.search(r"\b(insert|update|delete|drop|alter|truncate|create|copy|grant|revoke)\b", sql, re.I):
+            raise SQLBlocked("write_or_ddl_not_allowed")
+    
+        # 2) parse
+        try:
+            # standard dialect, or we could make this configurable
+            tree = sqlglot.parse_one(sql)
+        except Exception as e:
+            raise SQLBlocked(f"parse_error:{e.__class__.__name__}")
+    
+        # 3) allow only SELECT / WITH SELECT (and optionally EXPLAIN)
+>       if isinstance(tree, exp.Explain):
+                            ^^^^^^^^^^^
+E       AttributeError: module 'sqlglot.expressions' has no attribute 'Explain'
+
+sql_ops_agent\sql\guardrails.py:42: AttributeError
+_________________________ test_block_disallowed_table _________________________
+
+strict_policy = SQLPolicy(allowed_schemas={'main', 'public'}, allowed_tables={'users', 'orders'}, max_limit=10, allow_explain=False)
+
+    def test_block_disallowed_table(strict_policy):
+        with pytest.raises(SQLBlocked, match="table_not_allowed"):
+>           validate_and_rewrite("SELECT * FROM secrets", strict_policy)
+
+tests\test_guardrails.py:38: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+sql = 'SELECT * FROM secrets'
+policy = SQLPolicy(allowed_schemas={'main', 'public'}, allowed_tables={'users', 'orders'}, max_limit=10, allow_explain=False)
+
+    def validate_and_rewrite(sql: str, policy: SQLPolicy) -> str:
+        """
+        Parses SQL, validates against policy, and rewrites (e.g. enforcing LIMIT).
+        Raises SQLBlocked if policy is violated.
+        """
+        # 1) block multi-statement and obvious dangers early
+        # Semi-colon check: robustly check if there are multiple statements
+        if len(sqlglot.parse(sql)) > 1:
+             raise SQLBlocked("multiple_statements_not_allowed")
+    
+        # Regex fallback for obvious DDL/DML keywords as a first line of defense
+        if re.search(r"\b(insert|update|delete|drop|alter|truncate|create|copy|grant|revoke)\b", sql, re.I):
+            raise SQLBlocked("write_or_ddl_not_allowed")
+    
+        # 2) parse
+        try:
+            # standard dialect, or we could make this configurable
+            tree = sqlglot.parse_one(sql)
+        except Exception as e:
+            raise SQLBlocked(f"parse_error:{e.__class__.__name__}")
+    
+        # 3) allow only SELECT / WITH SELECT (and optionally EXPLAIN)
+>       if isinstance(tree, exp.Explain):
+                            ^^^^^^^^^^^
+E       AttributeError: module 'sqlglot.expressions' has no attribute 'Explain'
+
+sql_ops_agent\sql\guardrails.py:42: AttributeError
+________________________ test_block_disallowed_schema _________________________
+
+strict_policy = SQLPolicy(allowed_schemas={'main', 'public'}, allowed_tables={'users', 'orders'}, max_limit=10, allow_explain=False)
+
+    def test_block_disallowed_schema(strict_policy):
+        # Depending on how sqlglot parses schema.table
+        with pytest.raises(SQLBlocked, match="schema_not_allowed"):
+>           validate_and_rewrite("SELECT * FROM hidden.users", strict_policy)
+
+tests\test_guardrails.py:43: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+sql = 'SELECT * FROM hidden.users'
+policy = SQLPolicy(allowed_schemas={'main', 'public'}, allowed_tables={'users', 'orders'}, max_limit=10, allow_explain=False)
+
+    def validate_and_rewrite(sql: str, policy: SQLPolicy) -> str:
+        """
+        Parses SQL, validates against policy, and rewrites (e.g. enforcing LIMIT).
+        Raises SQLBlocked if policy is violated.
+        """
+        # 1) block multi-statement and obvious dangers early
+        # Semi-colon check: robustly check if there are multiple statements
+        if len(sqlglot.parse(sql)) > 1:
+             raise SQLBlocked("multiple_statements_not_allowed")
+    
+        # Regex fallback for obvious DDL/DML keywords as a first line of defense
+        if re.search(r"\b(insert|update|delete|drop|alter|truncate|create|copy|grant|revoke)\b", sql, re.I):
+            raise SQLBlocked("write_or_ddl_not_allowed")
+    
+        # 2) parse
+        try:
+            # standard dialect, or we could make this configurable
+            tree = sqlglot.parse_one(sql)
+        except Exception as e:
+            raise SQLBlocked(f"parse_error:{e.__class__.__name__}")
+    
+        # 3) allow only SELECT / WITH SELECT (and optionally EXPLAIN)
+>       if isinstance(tree, exp.Explain):
+                            ^^^^^^^^^^^
+E       AttributeError: module 'sqlglot.expressions' has no attribute 'Explain'
+
+sql_ops_agent\sql\guardrails.py:42: AttributeError
+_______________________________ test_allow_cte ________________________________
+
+strict_policy = SQLPolicy(allowed_schemas={'main', 'public'}, allowed_tables={'users', 'orders'}, max_limit=10, allow_explain=False)
+
+    def test_allow_cte(strict_policy):
+        sql = "WITH u AS (SELECT * FROM users) SELECT * FROM u"
+        # Note: 'u' is a temp table, checking it against allowlist is tricky.
+        # Our simple guardrail might block 'u' if it strictly checks all tables.
+        # To support CTEs properly, we'd need to track defined CTE names.
+        # THIS TEST MIGHT FAIL with current naive implementation -> let's see.
+        # It will find table 'users' (allowed) and table 'u' (not in allowed_tables).
+        # We might need to permit this if we want full CTE support,
+        # but for "production safety" failing on unknown table refs (even CTEs) is safe-fail.
+        # However, user wants "WITH" allowed.
+        # Let's adjust this test to expect failure or we need to improve implementation to track ALIASES/CTEs.
+        # For this iteration, let's assume naive blocking is acceptable "safe behavior",
+        # OR we relax the test to just check if 'users' is validated.
+        # Update: The instruction "Allowlist tables" implies strict checking.
+        # We'll skip this complex case or mark it as xfail if we were running it,
+        # but since I am writing the code, I should probably handle CTE definitions if I can.
+        # Use sqlglot Scope to find CTE definitions?
+        # Too complex for strictly "minimal" demo. I will assert it BLOCKS 'u' for now, which is safe.
+        with pytest.raises(SQLBlocked, match="table_not_allowed:u"):
+>           validate_and_rewrite(sql, strict_policy)
+
+tests\test_guardrails.py:64: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+sql = 'WITH u AS (SELECT * FROM users) SELECT * FROM u'
+policy = SQLPolicy(allowed_schemas={'main', 'public'}, allowed_tables={'users', 'orders'}, max_limit=10, allow_explain=False)
+
+    def validate_and_rewrite(sql: str, policy: SQLPolicy) -> str:
+        """
+        Parses SQL, validates against policy, and rewrites (e.g. enforcing LIMIT).
+        Raises SQLBlocked if policy is violated.
+        """
+        # 1) block multi-statement and obvious dangers early
+        # Semi-colon check: robustly check if there are multiple statements
+        if len(sqlglot.parse(sql)) > 1:
+             raise SQLBlocked("multiple_statements_not_allowed")
+    
+        # Regex fallback for obvious DDL/DML keywords as a first line of defense
+        if re.search(r"\b(insert|update|delete|drop|alter|truncate|create|copy|grant|revoke)\b", sql, re.I):
+            raise SQLBlocked("write_or_ddl_not_allowed")
+    
+        # 2) parse
+        try:
+            # standard dialect, or we could make this configurable
+            tree = sqlglot.parse_one(sql)
+        except Exception as e:
+            raise SQLBlocked(f"parse_error:{e.__class__.__name__}")
+    
+        # 3) allow only SELECT / WITH SELECT (and optionally EXPLAIN)
+>       if isinstance(tree, exp.Explain):
+                            ^^^^^^^^^^^
+E       AttributeError: module 'sqlglot.expressions' has no attribute 'Explain'
+
+sql_ops_agent\sql\guardrails.py:42: AttributeError
+____________________________ test_agent_run_basic _____________________________
+
+mock_llm = <AsyncMock id='1922978916608'>
+mock_retriever = <MagicMock id='1922978917616'>
+mock_executor = <AsyncMock id='1922978918624'>
+
+    @pytest.mark.asyncio
+    async def test_agent_run_basic(mock_llm, mock_retriever, mock_executor):
+        # Setup LLM response
+        # Explicitly make it return the object when awaited
+        async def mock_chat(*args, **kwargs):
+            return ChatResult(
+                text='{"plan": "test", "sql": "SELECT 1", "answer_text": "done"}',
+                usage={}
+            )
+        mock_llm.chat.side_effect = mock_chat
+    
+        orchestrator = AgentOrchestrator(mock_llm, mock_retriever, mock_executor)
+    
+        res = await orchestrator.run("test query")
+    
+>       assert res.outcome == "SUCCESS"
+E       AssertionError: assert 'LLM_ERROR' == 'SUCCESS'
+E         
+E         - SUCCESS
+E         + LLM_ERROR
+
+tests\test_integration.py:42: AssertionError
+---------------------------- Captured stdout call -----------------------------
+2026-02-17 14:20:02 [info     ] agent_run_start                query='test query'
+2026-02-17 14:20:02 [info     ] retrieval_complete             best_score=0.0 match_count=0 query='test query'
+2026-02-17 14:20:02 [error    ] agent_run_failed               error="module 'sqlglot.expressions' has no attribute 'Explain'" query='test query'
+=========================== short test summary info ===========================
+FAILED tests/test_executor.py::test_duckdb_execution - sqlalchemy.exc.ProgrammingError: (_duckdb.CatalogException) Catalog Error: Table with name users does not exist!
+Did you mean "sqlite_master"?
+[SQL: INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob')]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+FAILED tests/test_guardrails.py::test_allow_simple_select - AttributeError: module 'sqlglot.expressions' has no attribute 'Explain'
+FAILED tests/test_guardrails.py::test_enforce_limit_cap - AttributeError: module 'sqlglot.expressions' has no attribute 'Explain'
+FAILED tests/test_guardrails.py::test_block_disallowed_table - AttributeError: module 'sqlglot.expressions' has no attribute 'Explain'
+FAILED tests/test_guardrails.py::test_block_disallowed_schema - AttributeError: module 'sqlglot.expressions' has no attribute 'Explain'
+FAILED tests/test_guardrails.py::test_allow_cte - AttributeError: module 'sqlglot.expressions' has no attribute 'Explain'
+FAILED tests/test_integration.py::test_agent_run_basic - AssertionError: assert 'LLM_ERROR' == 'SUCCESS'
+  
+  - SUCCESS
+  + LLM_ERROR
+========================= 7 failed, 6 passed in 0.98s =========================

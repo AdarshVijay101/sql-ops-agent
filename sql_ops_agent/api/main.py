@@ -48,9 +48,10 @@ async def startup_event():
     llm_key = os.getenv("LLM_API_KEY", "local-token")
     db_url = os.getenv("DB_URL", "duckdb:///data/demo.duckdb")
     model_name = os.getenv("LLM_MODEL", "local-model")
+    allow_mock = os.getenv("ALLOW_MOCK_FALLBACK", "true").lower() == "true"
     
     # Initialize components
-    llm = OpenAICompatibleClient(base_url=llm_base, api_key=llm_key, model=model_name)
+    llm = OpenAICompatibleClient(base_url=llm_base, api_key=llm_key, model=model_name, allow_mock_fallback=allow_mock)
     
     # RAG docs dir (assume 'docs' folder in root or mounted volume)
     docs_path = Path("docs") 

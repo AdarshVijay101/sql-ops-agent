@@ -6,7 +6,7 @@ This project demonstrates a production-grade approach to building LLM agents:
 - **Safety First**: Deterministic Guardrails (AST parsing) prevent destructive queries.
 - **Grounded**: RAG-based citation enforcement with strict "No-Answer" thresholds.
 - **Observable**: Structured JSON logging and Prometheus metrics (`/metrics`).
-- **Evaluatable**: Integrated benchmark harness (`bench/cases.yaml`) effectively measuring safety and correctness.
+- **Demo Mode**: Runs out-of-the-box with a deterministic "Mock LLM" if no local model is available.
 
 ## Architecture
 
@@ -25,17 +25,16 @@ ORCH --> API
 
 ## Quickstart
 
-### Prerequisites
-- Docker & Docker Compose
-- A GGUF model (e.g., Mistral/Llama3) in `./models/` if using local CPU inference.
-
-### Run with Docker Compose
+### Option 1: Docker (Recommended)
+This requires no local setup other than Docker.
 ```bash
-# 1. Start the stack (API + Local LLM + DB)
 docker compose up --build
+```
+*Note: If no LLM server is detected at `http://host.docker.internal:8000`, the agent automatically falls back to **Demo Mode**, returning safe, canned responses for testing.*
 
-# 2. Check health
-curl http://localhost:8080/healthz
+### Option 2: Local Python
+```bash
+make run
 ```
 
 ### Usage Examples
@@ -80,3 +79,14 @@ Run the built-in benchmark harness to verify performance:
 python sql_ops_agent/eval/harness.py
 ```
 *Outputs a report covering Safety Recall, Citation Accuracy, and Answer Correctness.*
+
+## CI/CD
+The project includes a GitHub Actions workflow that:
+1. Runs `ruff` linting and `pytest` testing.
+2. Builds the Docker image.
+3. Publishes the image to **GitHub Container Registry (GHCR)** on push to main.
+
+To run the published image:
+```bash
+docker run -p 8080:8080 ghcr.io/<your-username>/sql-ops-agent:latest
+```

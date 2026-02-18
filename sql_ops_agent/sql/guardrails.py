@@ -39,7 +39,9 @@ def validate_and_rewrite(sql: str, policy: SQLPolicy) -> str:
         raise SQLBlocked(f"parse_error:{e.__class__.__name__}")
 
     # 3) allow only SELECT / WITH SELECT (and optionally EXPLAIN)
-    if isinstance(tree, exp.Explain):
+    Explain = getattr(exp, "Explain", type(None))
+    
+    if isinstance(tree, Explain):
         if not policy.allow_explain:
             raise SQLBlocked("explain_not_allowed")
         inner = tree.this
@@ -107,7 +109,7 @@ def validate_and_rewrite(sql: str, policy: SQLPolicy) -> str:
     # We will try to apply it to the root if it supports limits.
     
     node_to_limit = tree
-    if isinstance(tree, exp.Explain):
+    if isinstance(tree, Explain):
         node_to_limit = tree.this
         
     # If it is a With, the limit usually goes on the final query part?
@@ -128,7 +130,23 @@ def validate_and_rewrite(sql: str, policy: SQLPolicy) -> str:
     if current_limit:
         try:
              # 'this' should be a literal number
-             val = int(current_limit.this.name)
+             # sqlglot Limit might have 'this' or 'expression' depending on version
+             val_node = getattr(current_limit, "this", None) or getattr(current_limit, "expression", None)
+             
+             if val_node:
+                  # sqlglot Literal usually stores value in 'this'
+                  if hasattr(val_node, "this"):
+                      val = int(val_node.this)
+                  elif hasattr(val_node, "name"):
+                      val = int(val_node.name)
+                  else:
+                      val = int(val_node) # Primitive?
+             else:
+                  # Fallback for old behavior? Or strict error?
+                  # If we can't find value node, we can't check limit processing.
+                  # Assume current_limit.args['this'].name exists as last resort
+                  val = int(current_limit.args['this'].name)
+                  
              if val > target_limit:
                   # Replace it
                   node_to_limit.set("limit", exp.Limit(this=exp.Literal.number(target_limit)))
