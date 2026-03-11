@@ -1,4 +1,5 @@
 import sqlglot
+
 tree = sqlglot.parse_one("SELECT * FROM users")
 tree = tree.limit(10)
 print(tree.sql())

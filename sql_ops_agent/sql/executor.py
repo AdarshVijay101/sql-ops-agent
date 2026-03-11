@@ -4,8 +4,9 @@ from typing import Any, List, Dict
 import asyncio
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import create_engine, text
-from sqlalchemy.pool import NullPool, StaticPool
+from sqlalchemy.pool import StaticPool
 from sql_ops_agent.observability.metrics import SQL_LATENCY_SECONDS, SQL_EXECUTED_TOTAL
+
 
 @dataclass(frozen=True)
 class ExecConfig:
@@ -13,59 +14,59 @@ class ExecConfig:
     statement_timeout_ms: int = 3_000
     max_rows: int = 200
 
+
 class SQLExecutor:
     def __init__(self, cfg: ExecConfig):
         self._cfg = cfg
         self._is_async = "async" in cfg.dsn or "postgresql" in cfg.dsn
-        
+
         if self._is_async:
-            self._async_engine = create_async_engine(
-                cfg.dsn, 
-                pool_pre_ping=True
-            )
+            self._async_engine = create_async_engine(cfg.dsn, pool_pre_ping=True)
             self._sync_engine = None
         else:
-            # For in-memory databases (sqlite/duckdb), we must use StaticPool 
+            # For in-memory databases (sqlite/duckdb), we must use StaticPool
             # to maintain the same connection/state across multiple execute calls.
             if ":memory:" in cfg.dsn:
-                self._sync_engine = create_engine(cfg.dsn, poolclass=StaticPool, connect_args={'check_same_thread': False})
+                self._sync_engine = create_engine(
+                    cfg.dsn, poolclass=StaticPool, connect_args={"check_same_thread": False}
+                )
             else:
                 self._sync_engine = create_engine(cfg.dsn)
             self._async_engine = None
 
     async def run(self, sql: str, params: dict[str, Any] | None = None) -> List[Dict[str, Any]]:
         params = params or {}
-        
+
         # Measure latency
         with SQL_LATENCY_SECONDS.time():
             if self._async_engine:
-                 return await self._run_async(sql, params)
+                return await self._run_async(sql, params)
             else:
-                 return await self._run_sync_in_thread(sql, params)
+                return await self._run_sync_in_thread(sql, params)
 
     async def _run_async(self, sql: str, params: dict[str, Any]) -> List[Dict[str, Any]]:
         try:
             async with self._async_engine.begin() as conn:
                 if "postgres" in self._cfg.dsn:
-                     await conn.execute(text(f"SET statement_timeout = {self._cfg.statement_timeout_ms}"))
-                     
+                    await conn.execute(text(f"SET statement_timeout = {self._cfg.statement_timeout_ms}"))
+
                 result = await conn.execute(text(sql), params)
                 rows = result.mappings().fetchmany(self._cfg.max_rows)
                 SQL_EXECUTED_TOTAL.inc()
                 return [dict(r) for r in rows]
         except Exception:
-             # We might want a failure metric here
-             raise
+            # We might want a failure metric here
+            raise
 
     async def _run_sync_in_thread(self, sql: str, params: dict[str, Any]) -> List[Dict[str, Any]]:
         return await asyncio.to_thread(self._run_sync_internal, sql, params)
 
     def _run_sync_internal(self, sql: str, params: dict[str, Any]) -> List[Dict[str, Any]]:
         if not self._sync_engine:
-             raise RuntimeError("No sync engine initialized")
-        
+            raise RuntimeError("No sync engine initialized")
+
         with self._sync_engine.begin() as conn:
-             result = conn.execute(text(sql), params)
-             rows = result.mappings().fetchmany(self._cfg.max_rows)
-             SQL_EXECUTED_TOTAL.inc()
-             return [dict(r) for r in rows]
+            result = conn.execute(text(sql), params)
+            rows = result.mappings().fetchmany(self._cfg.max_rows)
+            SQL_EXECUTED_TOTAL.inc()
+            return [dict(r) for r in rows]
