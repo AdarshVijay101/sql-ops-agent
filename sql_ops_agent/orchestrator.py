@@ -25,6 +25,8 @@ class AgentResult:
     sql_executed: str | None = None
     rows: List[Dict[str, Any]] | None = None
     citations: List[Dict[str, Any]] = None
+    retrieved_context: List[Dict[str, Any]] | None = None
+    invalid_citations: List[str] | None = None
     blocked_reason: str | None = None
     outcome: str = "SUCCESS"
 
@@ -45,7 +47,7 @@ class AgentOrchestrator:
         
         log.info("retrieval_complete", 
                  match_count=len(retrieval_res.chunks), 
-                 best_score=retrieval_res.scores[0] if retrieval_res.scores else 0.0)
+                 retrieval_top_score=retrieval_res.scores[0] if retrieval_res.scores else 0.0)
 
         if retrieval_res.insufficient_evidence:
              log.info("outcome_no_answer", reason="insufficient_evidence")
@@ -89,11 +91,11 @@ class AgentOrchestrator:
         ]
         
         try:
-            # Metrics for tokens would be ideal here if return from llm.chat
+            llm_start = time.time()
             chat_res = await self.llm.chat(messages, temperature=0.0)
+            llm_latency_ms = round((time.time() - llm_start) * 1000, 2)
             raw_text = chat_res.text
             
-            # Record explicit tokens if available
             prompt_tokens = chat_res.usage.get("prompt_tokens", 0)
             completion_tokens = chat_res.usage.get("completion_tokens", 0)
             if prompt_tokens:
@@ -105,30 +107,69 @@ class AgentOrchestrator:
             start = raw_text.find("{")
             end = raw_text.rfind("}")
             if start == -1 or end == -1:
-                 log.warning("llm_json_parse_fail", text=raw_text)
+                 log.warning("llm_json_parse_fail", outcome="LLM_ERROR", text=raw_text, llm_latency_ms=llm_latency_ms)
                  REQUESTS_TOTAL.labels(outcome="LLM_ERROR").inc() # or partial success?
                  return AgentResult(answer=raw_text, citations=formatted_citations, outcome="LLM_ERROR")
             
             json_str = raw_text[start:end+1]
             try:
                 plan_data = json.loads(json_str)
-            except json.JSONDecodeError:
-                 log.warning("llm_json_decode_fail", text=json_str)
+            except json.JSONDecodeError as exc:
+                 log.warning("llm_json_decode_fail", outcome="LLM_ERROR", text=json_str, error=str(exc), llm_latency_ms=llm_latency_ms)
                  REQUESTS_TOTAL.labels(outcome="LLM_ERROR").inc()
                  return AgentResult(answer=raw_text, citations=formatted_citations, outcome="LLM_ERROR")
             
             sql_candidate = plan_data.get("sql")
             answer_text = plan_data.get("answer_text", "")
+            llm_citations = plan_data.get("citations", [])
+            
+            # Citation Validation Guardrail
+            valid_cite_keys = {f"{c['doc_id']}:{c['chunk_id']}".lower(): c for c in formatted_citations}
+            invalid_citations = []
+            verified_citations = []
+            
+            for cite in llm_citations:
+                 if not isinstance(cite, str): continue
+                 
+                 key = cite.lower()
+                 if "/" in key or "\\" in key:
+                      from pathlib import Path
+                      parts = key.split(":")
+                      if len(parts) >= 2:
+                           key = f"{Path(parts[0]).stem}:{parts[1]}"
+                 
+                 if key in valid_cite_keys:
+                      verified_citations.append(valid_cite_keys[key])
+                 else:
+                      invalid_citations.append(cite)
+            
+            if invalid_citations:
+                 log.warning("invalid_citations_detected", outcome="NO_ANSWER", guardrail_reason="invalid_citations", citations=invalid_citations, llm_latency_ms=llm_latency_ms)
+                 REQUESTS_TOTAL.labels(outcome="NO_ANSWER").inc()
+                 return AgentResult(
+                     answer="I cannot answer this question because my generated response was blocked due to invalid citations.",
+                     citations=[],
+                     invalid_citations=invalid_citations,
+                     retrieved_context=formatted_citations,
+                     blocked_reason="invalid_citations",
+                     outcome="NO_ANSWER"
+                 )
             
             if not sql_candidate:
+                 log.info("agent_run_complete", outcome="SUCCESS", llm_latency_ms=llm_latency_ms)
                  REQUESTS_TOTAL.labels(outcome="SUCCESS").inc() # Success (Answered without SQL)
-                 return AgentResult(answer=answer_text, citations=formatted_citations, outcome="SUCCESS")
+                 return AgentResult(
+                     answer=answer_text, 
+                     citations=verified_citations, 
+                     retrieved_context=formatted_citations,
+                     outcome="SUCCESS"
+                 )
 
             # 3. Guardrails
             try:
                 safe_sql = validate_and_rewrite(sql_candidate, self.policy)
             except SQLBlocked as e:
-                log.warning("sql_blocked", reason=str(e))
+                log.warning("sql_blocked", outcome="BLOCKED_GUARDRAILS", guardrail_reason=str(e), sql=sql_candidate, llm_latency_ms=llm_latency_ms)
                 GUARDRAIL_BLOCKS_TOTAL.labels(reason=str(e)).inc()
                 REQUESTS_TOTAL.labels(outcome="BLOCKED_GUARDRAILS").inc()
                 return AgentResult(
@@ -140,18 +181,22 @@ class AgentOrchestrator:
                 )
             
             # 4. Execute
+            sql_start = time.time()
             rows = await self.executor.run(safe_sql)
+            sql_latency_ms = round((time.time() - sql_start) * 1000, 2)
             
+            log.info("agent_run_complete", outcome="SUCCESS", llm_latency_ms=llm_latency_ms, sql_latency_ms=sql_latency_ms)
             REQUESTS_TOTAL.labels(outcome="SUCCESS").inc()
             return AgentResult(
                 answer=answer_text,
                 sql_executed=safe_sql,
                 rows=rows,
-                citations=formatted_citations,
+                citations=verified_citations,
+                retrieved_context=formatted_citations,
                 outcome="SUCCESS"
             )
 
         except Exception as e:
-            log.error("agent_run_failed", error=str(e))
+            log.error("agent_run_failed", outcome="LLM_ERROR", error=str(e))
             REQUESTS_TOTAL.labels(outcome="LLM_ERROR").inc() # Catch-all
             return AgentResult(answer=f"Internal error: {str(e)}", outcome="LLM_ERROR")

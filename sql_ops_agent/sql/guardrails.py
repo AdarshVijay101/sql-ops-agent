@@ -104,75 +104,31 @@ def validate_and_rewrite(sql: str, policy: SQLPolicy) -> str:
                   raise SQLBlocked(f"table_not_allowed:{table}")
 
     # 5) enforce LIMIT (add if absent, clamp if too large)
-    # This applies primarily to the top-level SELECT or the final component of a WITH/UNION.
-    # sqlglot's `limit` parsing can be tricky on Unions or Withs.
-    # We will try to apply it to the root if it supports limits.
-    
-    node_to_limit = tree
-    if isinstance(tree, Explain):
-        node_to_limit = tree.this
-        
-    # If it is a With, the limit usually goes on the final query part?
-    # sqlglot 'With' expression usually wraps the recursive CTEs and the 'this' is the final query.
-    # Validation:
-    #   WITH x AS (...) SELECT * FROM x
-    #   The LIMIT applies to the SELECT * FROM x.
-    
-    # We need to find the "main" query.
-    # standard sqlglot: 'limit' arg on Select, Union, etc.
+    node_to_limit = tree.this if isinstance(tree, Explain) else tree
     
     current_limit = node_to_limit.args.get("limit")
-    
-    # We want to enforce limit on the outer result.
-    # If current_limit exists, check value.
     target_limit = policy.max_limit
     
     if current_limit:
         try:
-             # 'this' should be a literal number
-             # sqlglot Limit might have 'this' or 'expression' depending on version
              val_node = getattr(current_limit, "this", None) or getattr(current_limit, "expression", None)
-             
              if val_node:
-                  # sqlglot Literal usually stores value in 'this'
-                  if hasattr(val_node, "this"):
-                      val = int(val_node.this)
-                  elif hasattr(val_node, "name"):
-                      val = int(val_node.name)
-                  else:
-                      val = int(val_node) # Primitive?
+                  val = int(getattr(val_node, "this", getattr(val_node, "name", val_node)))
              else:
-                  # Fallback for old behavior? Or strict error?
-                  # If we can't find value node, we can't check limit processing.
-                  # Assume current_limit.args['this'].name exists as last resort
                   val = int(current_limit.args['this'].name)
-                  
+             
              if val > target_limit:
-                  # Replace it
-                  node_to_limit.set("limit", exp.Limit(this=exp.Literal.number(target_limit)))
-        except (ValueError, AttributeError):
-             # Complex limit (subquery? parameter?) -> block
+                  if isinstance(tree, Explain):
+                      tree.this.limit(target_limit, copy=False)
+                  else:
+                      tree = tree.limit(target_limit, copy=False)
+        except (ValueError, AttributeError, TypeError):
              raise SQLBlocked("non_literal_limit_not_allowed")
     else:
-        # Add limit
-        # Note: if it's a WITH statement, we add limit to the helper (bad) or the main query?
-        # sqlglot WITH has "recursive" (ctes) and "this" (main query).
-        # We assume "this" supports limit.
         if isinstance(node_to_limit, (exp.Select, exp.Union, exp.With)):
-             # For WITH, we might need to modify the inner query if 'limit' isn't a direct arg of With (dialect dependent)
-             # but sqlglot often puts limit on the With object itself for some dialects or passes it down?
-             # Actually standard SQL: WITH ... (SELECT ... LIMIT X)
-             # The correct place is the selectable.
-             # If node is With, we might need to traverse to the main query.
-             if isinstance(node_to_limit, exp.With):
-                  # The final query is often valid to have a limit.
-                  pass 
-             
-             # Actually, simpler to just set .args['limit'] on the object if sqlglot supports it for that type.
-             # If not, we might fail or produce invalid SQL.
-             # Let's trust sqlglot.exp.Limit structure availability on Select/Union.
-             
-             # If it is a generic AST node that takes a limit:
-             node_to_limit.set("limit", exp.Limit(this=exp.Literal.number(target_limit)))
+             if isinstance(tree, Explain):
+                 tree.this.limit(target_limit, copy=False)
+             else:
+                 tree = tree.limit(target_limit, copy=False)
 
     return tree.sql()

@@ -1,0 +1,40 @@
+Waiting for server to start...
+
+--- Testing Safe query ---
+Status: 200
+{'answer': 'I cannot answer this question because retrieved documentation does '
+           'not contain sufficient evidence.',
+ 'blocked_reason': 'insufficient_evidence',
+ 'citations': [],
+ 'invalid_citations': [],
+ 'metrics': {'latency_ms': 2.43},
+ 'outcome': 'NO_ANSWER',
+ 'retrieved': [],
+ 'rows': None,
+ 'sql': None}
+
+--- Testing Unsafe query ---
+Status: 200
+{'answer': 'I cannot answer this question because retrieved documentation does '
+           'not contain sufficient evidence.',
+ 'blocked_reason': 'insufficient_evidence',
+ 'citations': [],
+ 'invalid_citations': [],
+ 'metrics': {'latency_ms': 0.91},
+ 'outcome': 'NO_ANSWER',
+ 'retrieved': [],
+ 'rows': None,
+ 'sql': None}
+
+--- Testing Irrelevant query ---
+Status: 200
+{'answer': 'I cannot answer this question because retrieved documentation does '
+           'not contain sufficient evidence.',
+ 'blocked_reason': 'insufficient_evidence',
+ 'citations': [],
+ 'invalid_citations': [],
+ 'metrics': {'latency_ms': 0.94},
+ 'outcome': 'NO_ANSWER',
+ 'retrieved': [],
+ 'rows': None,
+ 'sql': None}

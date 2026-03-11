@@ -4,6 +4,8 @@ import sys
 import contextvars
 from typing import Any, Dict
 
+import os
+
 # ContextVar to store request ID
 request_id_var = contextvars.ContextVar("request_id", default="unknown")
 
@@ -14,11 +16,20 @@ def add_request_id(logger: Any, method_name: str, event_dict: Dict[str, Any]) ->
     event_dict["request_id"] = request_id_var.get()
     return event_dict
 
+def add_env_service(logger: Any, method_name: str, event_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Injects ENV and SERVICE_NAME variables into every log entry.
+    """
+    event_dict["env"] = os.getenv("ENV", "dev")
+    event_dict["service_name"] = os.getenv("SERVICE_NAME", "sql-ops-agent")
+    return event_dict
+
 def configure_logging(log_level: str = "INFO", json_format: bool = True):
     shared_processors = [
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.stdlib.add_log_level,
         add_request_id, # Add our custom processor
+        add_env_service, # Add env info
         structlog.contextvars.merge_contextvars,
         structlog.processors.CallsiteParameterAdder(
             {

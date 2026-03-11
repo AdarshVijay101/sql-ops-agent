@@ -17,6 +17,11 @@ RUN useradd -m appuser
 COPY --from=builder /app/dist/*.whl /app/dist/
 RUN pip install /app/dist/*.whl --no-cache-dir
 
+# Prepare mount paths for stateless deployments (DB and RAG docs)
+RUN mkdir -p /app/data /app/docs && chown -R appuser:appuser /app/data /app/docs
+ENV DB_URL="duckdb:////app/data/demo.duckdb"
+ENV RAG_INDEX_PATH="/app/docs"
+
 # Switch to non-root
 USER appuser
 

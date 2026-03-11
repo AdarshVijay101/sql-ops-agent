@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "C:\Users\kadar\.gemini\antigravity\scratch\sql-ops-agent\test_import.py", line 1, in <module>
+    import sql_ops_agent.api.main
+  File "C:\Users\kadar\.gemini\antigravity\scratch\sql-ops-agent\sql_ops_agent\api\main.py", line 10, in <module>
+    from sql_ops_agent.observability.metrics import AGENT_RUN_TOTAL, AGENT_LATENCY_SECONDS
+ImportError: cannot import name 'AGENT_RUN_TOTAL' from 'sql_ops_agent.observability.metrics' (C:\Users\kadar\.gemini\antigravity\scratch\sql-ops-agent\sql_ops_agent\observability\metrics.py)
